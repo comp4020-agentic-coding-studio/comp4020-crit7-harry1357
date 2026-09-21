@@ -109,6 +109,18 @@ deliberately: the spec harness and the tutor's help are both aimed at it, and
 Astro carries over from A2, so the new material this week is the backend rather
 than the framework. Off piste was available and I didn't take it.
 
+**A stale pnpm metadata cache reports a real version as nonexistent.** Adding
+the lint devDependencies forced a re-resolve, and the install died with "No
+matching version found for `magic-string@1.4.1`… the latest release is 1.2.3" —
+while `pnpm view magic-string versions` listed 1.4.1 and the lockfile already
+had it with an integrity hash. The cached packument predated the publish, and
+pnpm reports the newest version *it knows about* as the latest, which reads
+exactly like the version doesn't exist. `pnpm cache list` shows the cache and
+`pnpm cache delete "*"` clears it; the next package fails the same way until
+you clear all of it, not one entry. Two wrong theories before that
+(`minimumReleaseAge`, a bad dependency range) — check what pnpm can see before
+changing what it's asked for.
+
 ## Astro on *this* template
 
 - **`output: "server"`.** Pages render per request so they can read the

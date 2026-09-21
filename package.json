@@ -8,8 +8,10 @@
     "build": "astro build",
     "preview": "astro preview",
     "typecheck": "astro check",
-    "check": "pnpm typecheck && pnpm test",
+    "lint": "oxlint --ignore-path .gitignore && stylelint \"**/*.css\" --ignore-path .gitignore --allow-empty-input",
+    "check": "pnpm typecheck && pnpm lint && pnpm test",
     "check:evidence": "node scripts/check-evidence.ts",
+    "check:viewports": "node scripts/check-viewports.ts",
     "test": "astro build && vitest run",
     "db:generate": "drizzle-kit generate"
   },
@@ -27,6 +29,9 @@
     "axe-core": "^4.13.0",
     "drizzle-kit": "^0.31.10",
     "jsdom": "^29.1.1",
+    "oxlint": "^1.81.0",
+    "stylelint": "^17.14.1",
+    "stylelint-config-standard": "^40.0.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   },
