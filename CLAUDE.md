@@ -89,7 +89,9 @@ app that you can't reliably see by looking at it.
   browser didn't launch teaches you to ignore it. Run it before shipping and
   after any layout work. It starts by loading a synthetic 3000px page and
   failing if it *doesn't* detect that, so a green run means the probe was
-  looking.
+  looking. Teardown is best-effort on purpose: Chrome is still writing its
+  profile as it dies, so removing it races and throws `ENOTEMPTY`, and a probe
+  that reports a cleanup race instead of its finding is worse than no probe.
 - **check:evidence** — the submission gate. **This week it wants both
   `PROCESS.md` and `reflections/crit-7.md`** — the opposite of A2, where
   `reflections/` stayed empty. Any other filename reads as no reflection at all.
@@ -125,6 +127,12 @@ changing what it's asked for.
 
 - **`output: "server"`.** Pages render per request so they can read the
   database. There is no static directory of HTML to walk or serve.
+- **A server build emits no CSS file.** `dist` contains no `.css` and the
+  served HTML carries no `rel="stylesheet"` — the stylesheet is inlined into
+  each page as a `<style>` block, and the text lives inside
+  `dist/server/entry.mjs`. A2's "read the built CSS off disk" rule therefore
+  cannot work here; read it out of the served HTML instead, which is a stronger
+  claim anyway. `spec/contrast.test.ts` does exactly that.
 - `astro check` is the typecheck script, not `tsc --noEmit`.
 - **`security.allowedDomains` names `**.fly.dev`**, which is what lets Astro
   trust `x-forwarded-proto` behind Fly's TLS-terminating proxy and accept
