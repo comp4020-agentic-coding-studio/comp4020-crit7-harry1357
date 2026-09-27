@@ -151,6 +151,20 @@ changing what it's asked for.
 `DATABASE_PATH=/data/app.db` on a Fly volume, so state survives reloads,
 restarts and redeploys. The tests boot against a throwaway database instead.
 
+- **The schema is ground truth. No table or column exists that isn't in
+  `src/lib/schema.ts`; every change is a migration, never a hand edit to the
+  database.** The deployed state outlives every deploy, so the migration trail
+  is the only thing keeping old rows and new code compatible. The path is
+  `src/lib/schema.ts` on this template — `drizzle.config.ts` names it, and it
+  is not `src/db/schema`.
+- **Seed data that only a human remembers to run is an empty table in
+  production.** The Fly machine stops when idle and starts on the next
+  request, so nobody is shelling in to run a one-off command: the seed
+  (`src/lib/seed.ts`) runs at boot after `migrate()`, and is idempotent by a
+  unique key so restart number one hundred still has six rooms.
+- **`better-sqlite3` leaves `PRAGMA foreign_keys` OFF.** Every `references()`
+  in the schema is a claim SQLite silently does not check until you turn it
+  on, so `src/lib/db.ts` does.
 - **"The core flow persists across a reload" is a spec line, so assert it over
   HTTP** — create something, fetch the page again, look for it in the response.
   Reading the row back out of SQLite proves the write, not the flow.
