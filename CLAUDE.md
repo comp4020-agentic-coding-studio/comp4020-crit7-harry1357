@@ -138,6 +138,13 @@ changing what it's asked for.
   trust `x-forwarded-proto` behind Fly's TLS-terminating proxy and accept
   same-origin form POSTs. A form that works locally and 403s in production is
   this setting, not the form.
+- **A form POST with no `Origin` header 403s, and that includes your own
+  tests.** Astro's CSRF guard rejects it before the request reaches any rule
+  of yours. A browser always sends the header; `fetch` never does unless you
+  say so. Measured on this template: `POST /api/messages` without it → 403,
+  with `origin: <baseUrl>` → 303. A spec test that forgets it is not testing
+  the flow it is named for — it is testing the guard, and it fails for a
+  reason that has nothing to do with the feature.
 - **Vite leaves `url(#fragment)` alone.** In-document SVG filter references
   (`filter: url("#ink-bleed")`) survive the build; only real asset URLs get
   rewritten. Grep the output for the fragment once rather than assuming.

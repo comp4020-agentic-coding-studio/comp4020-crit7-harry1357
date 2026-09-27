@@ -74,7 +74,11 @@ describe("the core flow persists across a reload", () => {
     const body = new URLSearchParams({ ...flow.fields, [CORE_FLOW.echoes]: value });
     const created = await fetch(new URL(flow.path, baseUrl), {
       method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
+      // Astro rejects a form POST that carries no same-origin `Origin` header
+      // with a 403, before the request reaches any of the app's own rules. A
+      // browser always sends one; `fetch` does not. Without it this probe
+      // measures the CSRF guard and never the flow it is named for.
+      headers: { origin: baseUrl, "content-type": "application/x-www-form-urlencoded" },
       body,
       redirect: "follow",
     });
