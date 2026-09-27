@@ -1,53 +1,209 @@
 ---
-import { listMessages } from "../lib/db";
-import "../styles.css";
+import Page from "../layouts/Page.astro";
+import {
+  type BookedRoom,
+  type BookingStatus,
+  type Room,
+  createBooking,
+  listBookings,
+  listRooms,
+} from "../lib/db";
+import { formatDate, formatTimeRange } from "../lib/format";
 
-const messages = listMessages();
+const rooms = listRooms();
+
+// What the form was last given, so a refused booking comes back filled in
+// instead of blank. Retyping six fields to fix one is how a person gives up.
+let submitted: Record<string, string> = {};
+let error: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const field = (name: string): string => String(form.get(name) ?? "").trim();
+  submitted = {
+    roomId: field("roomId"),
+    date: field("date"),
+    startTime: field("startTime"),
+    endTime: field("endTime"),
+    society: field("society"),
+    purpose: field("purpose"),
+    status: field("status"),
+  };
+
+  const status: BookingStatus = submitted.status === "confirmed" ? "confirmed" : "requested";
+  const outcome = createBooking({
+    roomId: Number(submitted.roomId),
+    date: submitted.date,
+    startTime: submitted.startTime,
+    endTime: submitted.endTime,
+    society: submitted.society,
+    purpose: submitted.purpose,
+    status,
+  });
+
+  // Post/redirect/get on success: a reload of this page must not book the room
+  // a second time, and the next visitor has to see the same board this one does.
+  if (outcome.ok) return Astro.redirect("/", 303);
+
+  error = outcome.error;
+  // The request was well-formed and the app understood it — it broke a rule.
+  // 422 says that; 400 would claim the browser sent nonsense.
+  Astro.response.status = 422;
+}
+
+interface DateGroup {
+  date: string;
+  bookings: BookedRoom[];
+}
+interface RoomGroup {
+  room: Room;
+  dates: DateGroup[];
+}
+
+// listBookings() comes back ordered by room, then date, then start time, so
+// grouping is a walk that starts a new group whenever the key changes. Built
+// by appending to arrays rather than keyed by room: a room is legitimately in
+// many groups, and keying by the thing the group is about is how crit 5 lost
+// half its data.
+const board: RoomGroup[] = [];
+for (const booking of listBookings()) {
+  let forRoom = board.at(-1);
+  if (!forRoom || forRoom.room.id !== booking.roomId) {
+    forRoom = { room: booking.room, dates: [] };
+    board.push(forRoom);
+  }
+  let onDate = forRoom.dates.at(-1);
+  if (!onDate || onDate.date !== booking.date) {
+    onDate = { date: booking.date, bookings: [] };
+    forRoom.dates.push(onDate);
+  }
+  onDate.bookings.push(booking);
+}
 ---
 
-<!doctype html>
-<html lang="en-AU">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>COMP4020 prototype</title>
-  </head>
-  <body>
-    <nav aria-label="site">
-      <a href="/">Guestbook</a>
-      <a href="/readme/">About</a>
-    </nav>
-    <main>
-      <h1>Guestbook</h1>
-      <p>
-        A minimal full-stack starter: messages live in SQLite on the machine's
-        volume (state survives a reload and a redeploy), and new messages
-        appear in every open tab over a server-sent-events stream — open this
-        page twice and sign it in one. Replace all of this with your own
-        prototype.
+<Page title="Book a room — ANU society bookings">
+  <h1>Book an ANU room</h1>
+  <p class="lede">
+    What a society events director actually needs from room booking: the venues
+    they can ask for, what is already taken, and a straight answer when the room
+    they want is gone. One rule is enforced — a room cannot be double-booked —
+    and it is enforced on the server, so it holds however the request arrives.
+  </p>
+
+  <h2 id="book">Book a room</h2>
+  {
+    error && (
+      <p class="clash" id="clash">
+        <strong>Not booked.</strong> {error}
       </p>
-      <form method="post" action="/api/messages">
-        <label for="body">Leave a message</label>
-        <input id="body" name="body" required maxlength="500" />
-        <button>Sign</button>
-      </form>
-      <ul id="messages">
-        {messages.map((message) => <li>{message.body}</li>)}
-      </ul>
-    </main>
-    <script>
-      // The live half of the demo: subscribe to the SSE stream and prepend
-      // messages as they arrive. The form itself needs none of this — its
-      // POST + redirect re-renders the submitting tab from SQLite; this
-      // stream is how every other tab finds out.
-      const list = document.querySelector("#messages");
-      const source = new EventSource("/api/events");
-      source.addEventListener("message", (event) => {
-        const message = JSON.parse(event.data);
-        const item = document.createElement("li");
-        item.textContent = message.body;
-        list?.prepend(item);
-      });
-    </script>
-  </body>
-</html>
+    )
+  }
+  <form method="post" action="/" aria-describedby={error ? "clash" : undefined}>
+    <p class="field">
+      <label for="roomId">Room</label>
+      <select id="roomId" name="roomId" required aria-invalid={error ? "true" : undefined}>
+        <option value="">Choose a room</option>
+        {
+          rooms.map((room) => (
+            <option value={String(room.id)} selected={submitted.roomId === String(room.id)}>
+              {room.name} — {room.building} (seats {room.capacity})
+            </option>
+          ))
+        }
+      </select>
+    </p>
+    <p class="field">
+      <label for="date">Date</label>
+      <input type="date" id="date" name="date" required value={submitted.date ?? ""} />
+    </p>
+    <p class="field">
+      <label for="startTime">From</label>
+      <input
+        type="time"
+        id="startTime"
+        name="startTime"
+        step="900"
+        required
+        value={submitted.startTime ?? ""}
+      />
+    </p>
+    <p class="field">
+      <label for="endTime">To</label>
+      <input
+        type="time"
+        id="endTime"
+        name="endTime"
+        step="900"
+        required
+        value={submitted.endTime ?? ""}
+      />
+    </p>
+    <p class="field">
+      <label for="society">Society</label>
+      <input
+        type="text"
+        id="society"
+        name="society"
+        maxlength="80"
+        required
+        value={submitted.society ?? ""}
+      />
+    </p>
+    <p class="field">
+      <label for="purpose">What for</label>
+      <input
+        type="text"
+        id="purpose"
+        name="purpose"
+        maxlength="120"
+        required
+        value={submitted.purpose ?? ""}
+      />
+    </p>
+    <p class="field">
+      <label for="status">Status</label>
+      <select id="status" name="status">
+        <option value="requested" selected={submitted.status !== "confirmed"}>Requested</option>
+        <option value="confirmed" selected={submitted.status === "confirmed"}>Confirmed</option>
+      </select>
+    </p>
+    <p class="field field-submit">
+      <button>Book it</button>
+    </p>
+  </form>
+
+  <h2>What is booked</h2>
+  {
+    board.length === 0 ? (
+      <p class="empty">Nothing is booked yet. The first booking above starts the board.</p>
+    ) : (
+      board.map((forRoom) => (
+        <section class="room-group">
+          <h3>
+            {forRoom.room.name}
+            <span class="room-where">
+              {forRoom.room.building} · seats {forRoom.room.capacity}
+            </span>
+          </h3>
+          {forRoom.dates.map((onDate) => (
+            <section class="date-group">
+              <h4>{formatDate(onDate.date)}</h4>
+              <ul class="bookings">
+                {onDate.bookings.map((booking) => (
+                  <li>
+                    <span class="booking-time">
+                      {formatTimeRange(booking.startTime, booking.endTime)}
+                    </span>
+                    <span class="booking-society">{booking.society}</span>
+                    <span class="booking-purpose">{booking.purpose}</span>
+                    <span class={`status is-${booking.status}`}>{booking.status}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </section>
+      ))
+    )
+  }
+</Page>

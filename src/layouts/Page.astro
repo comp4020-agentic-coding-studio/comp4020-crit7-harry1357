@@ -1,0 +1,42 @@
+---
+import "../styles.css";
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+const here = Astro.url.pathname;
+
+const NAV = [
+  { href: "/", label: "Book a room" },
+  { href: "/rooms/", label: "Rooms" },
+  { href: "/readme/", label: "About" },
+];
+---
+
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <!-- layout:Page — grep the built output for this. In A2 a layout named as
+         defaultLayout rendered on zero pages, so the stylesheet imported there
+         reached nothing and failed silently in both directions. -->
+    <nav aria-label="site">
+      {
+        NAV.map((item) => (
+          <a href={item.href} aria-current={here === item.href ? "page" : undefined}>
+            {item.label}
+          </a>
+        ))
+      }
+    </nav>
+    <main>
+      <slot />
+    </main>
+  </body>
+</html>

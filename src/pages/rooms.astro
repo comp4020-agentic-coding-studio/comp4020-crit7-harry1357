@@ -1,0 +1,27 @@
+---
+import Page from "../layouts/Page.astro";
+import { listRooms } from "../lib/db";
+
+const rooms = listRooms();
+---
+
+<Page title="Rooms — ANU society bookings">
+  <h1>Rooms</h1>
+  <p class="lede">
+    The venues this app can book. They are seed data: ANU built them, and
+    nothing here creates, renames or removes one. Capacities are indicative —
+    they are here so "will this fit?" is a question you can answer before you
+    ask for the room, not a number to quote at anybody.
+  </p>
+  <ul class="rooms">
+    {
+      rooms.map((room) => (
+        <li>
+          <span class="room-name">{room.name}</span>
+          <span class="room-where">{room.building}</span>
+          <span class="room-seats">seats {room.capacity}</span>
+        </li>
+      ))
+    }
+  </ul>
+</Page>

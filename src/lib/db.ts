@@ -1,19 +1,11 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import Database from "better-sqlite3";
-import { and, asc, desc, eq, gt, lt } from "drizzle-orm";
+import { and, asc, eq, gt, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { formatDate, formatTimeRange } from "./format";
-import {
-  type Booking,
-  type BookingStatus,
-  type Message,
-  type Room,
-  bookings,
-  messages,
-  rooms,
-} from "./schema";
+import { type Booking, type BookingStatus, type Room, bookings, rooms } from "./schema";
 import { seedRooms } from "./seed";
 
 // One SQLite file is the app's whole persistent state. In production
@@ -42,15 +34,7 @@ migrate(db, { migrationsFolder: "./drizzle" });
 // both end up with the same six venues.
 seedRooms(db);
 
-export type { Booking, BookingStatus, Message, Room };
-
-export function listMessages(): Message[] {
-  return db.select().from(messages).orderBy(desc(messages.id)).limit(50).all();
-}
-
-export function addMessage(body: string): Message {
-  return db.insert(messages).values({ body }).returning().get();
-}
+export type { Booking, BookingStatus, Room };
 
 // ---------------------------------------------------------------------------
 // Rooms

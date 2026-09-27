@@ -1,13 +1,43 @@
+/* One stylesheet, because stylelint cannot see an inline <style> block in an
+   .astro file, and styles nothing checks are styles nothing protects.
+
+   Every ink below is checked by spec/contrast.test.ts, which reads these
+   values back out of the HTML the app actually serves and does the WCAG
+   arithmetic on them. axe's colour-contrast rule is disabled on this template
+   (its pass runs in jsdom, which has no layout), so that test is the only
+   thing here looking at colour at all.
+
+   Base element rules come before their :focus-visible and descendant
+   variants throughout: no-descending-specificity is about source order, not
+   about which one wins. */
+
+:root {
+  --ground: #fff;
+  --ink: #1a1a1a;
+  --ink-muted: #565656;
+  --link: #0b5fff;
+  --rule: #d8d8d8;
+  --field-edge: #6b6b6b;
+  --clash-ink: #b3261e;
+  --clash-ground: #fdecea;
+  --held-ink: #14532d;
+  --held-ground: #e7f4ea;
+  --asked-ink: #6b4a00;
+  --asked-ground: #fdf3d8;
+}
+
 body {
   margin: 0;
-  padding: 2rem;
+  padding-block: 1.5rem 4rem;
+  padding-inline: 1rem;
+  background: #fff;
+  color: #1a1a1a;
   font-family: system-ui, sans-serif;
   line-height: 1.6;
-  color: #1a1a1a;
 }
 
 main {
-  max-width: 40rem;
+  max-width: 44rem;
   margin: 0 auto;
 }
 
@@ -15,26 +45,220 @@ a {
   color: #0b5fff;
 }
 
-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-  margin-block: 1.5rem;
-}
+/* A date or time input given no explicit minimum sizes to its own text and
+   overflows its grid column rather than shrinking with it. */
 
-input {
-  flex: 1;
-  min-width: 12rem;
-  padding: 0.4rem 0.6rem;
+input,
+select {
+  min-width: 0;
+  padding-block: 0.45rem;
+  padding-inline: 0.55rem;
+  border: 1px solid var(--field-edge);
+  border-radius: 3px;
+  background: var(--ground);
+  color: var(--ink);
   font: inherit;
 }
 
 button {
-  padding: 0.4rem 1rem;
+  padding-block: 0.55rem;
+  padding-inline: 1.4rem;
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  background: var(--ink);
+  color: var(--ground);
   font: inherit;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-#messages {
-  padding-inline-start: 1.2rem;
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid var(--link);
+  outline-offset: 2px;
+}
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 1.25rem;
+  max-width: 44rem;
+  margin: 0 auto 2rem;
+  padding-block-end: 0.75rem;
+  border-block-end: 1px solid var(--rule);
+}
+
+nav a[aria-current="page"] {
+  font-weight: 700;
+}
+
+h1 {
+  margin-block: 0 0.5rem;
+  font-size: 1.85rem;
+  line-height: 1.2;
+}
+
+h2 {
+  margin-block: 2.5rem 0.75rem;
+  font-size: 1.3rem;
+}
+
+h3 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.6rem;
+  align-items: baseline;
+  margin-block: 1.75rem 0.25rem;
+  font-size: 1.05rem;
+}
+
+h4 {
+  margin-block: 0.9rem 0.35rem;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.lede {
+  margin-block: 0 2rem;
+  color: var(--ink-muted);
+}
+
+.empty {
+  color: var(--ink-muted);
+}
+
+/* The refusal. Deliberately not a live region: this is a fresh page load, so
+   a screen reader reads the document anyway, and aria-live on static content
+   is how you get something announced twice. The form points at it with
+   aria-describedby instead, which ties the message to the control that
+   produced it. */
+
+.clash {
+  margin-block: 0 1.25rem;
+  padding-block: 0.75rem;
+  padding-inline: 0.9rem;
+  border-inline-start: 4px solid var(--clash-ink);
+  background: var(--clash-ground);
+  color: var(--clash-ink);
+}
+
+form {
+  display: grid;
+  gap: 0.9rem 1.25rem;
+  margin-block: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+}
+
+.field label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.room-where {
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+  font-weight: 400;
+}
+
+.bookings {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bookings li {
+  display: grid;
+  gap: 0.15rem 0.9rem;
+  padding-block: 0.6rem;
+  border-block-start: 1px solid var(--rule);
+}
+
+.booking-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.booking-purpose {
+  color: var(--ink-muted);
+}
+
+.status {
+  justify-self: start;
+  padding-block: 0.1rem;
+  padding-inline: 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.status.is-requested {
+  background: var(--asked-ground);
+  color: var(--asked-ink);
+}
+
+.status.is-confirmed {
+  background: var(--held-ground);
+  color: var(--held-ink);
+}
+
+.rooms {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rooms li {
+  display: grid;
+  gap: 0.1rem 1rem;
+  padding-block: 0.75rem;
+  border-block-start: 1px solid var(--rule);
+}
+
+.room-name {
+  font-weight: 600;
+}
+
+.room-seats {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Wider than a phone: the form becomes two columns, and a booking or a room
+   becomes one row rather than a stack. Below this everything stays stacked,
+   which is what keeps a 390px viewport from scrolling sideways. */
+
+@media (width >= 34rem) {
+  form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .field-submit {
+    grid-column: 1 / -1;
+  }
+
+  .bookings li {
+    grid-template-columns: 8.5rem 1fr 7rem;
+    align-items: baseline;
+  }
+
+  .booking-purpose {
+    grid-column: 2;
+  }
+
+  .rooms li {
+    grid-template-columns: 1fr 1fr 7rem;
+    align-items: baseline;
+  }
 }
