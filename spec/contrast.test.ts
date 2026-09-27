@@ -45,15 +45,29 @@ let served = "";
  *  it instead of silently against white. */
 let ground = "#ffffff";
 
-/** The value of one property inside one rule, as served. */
+/** A custom property's value, as `:root` declares it in the served CSS. */
+function token(name: string): string {
+  const found = new RegExp(`--${name}\\s*:\\s*(#[0-9a-fA-F]{3,8})`).exec(served);
+  expect(found, `no \`--${name}\` in the served CSS --- renamed, or minified away?`).toBeTruthy();
+  return (found as RegExpExecArray)[1];
+}
+
+/** The value of one property inside one rule, as served, following a
+ *  `var(--token)` to what `:root` actually sets it to. Reading the token
+ *  through the rule that uses it is the point: a token nothing references is
+ *  a colour nobody sees, and a rule pointing at a token that no longer exists
+ *  fails here instead of rendering as an inherited colour. */
 function declared(selector: string, property: string): string {
   const rule = new RegExp(`${selector}\\s*\\{([^}]*)\\}`).exec(served);
   expect(rule, `no \`${selector}\` rule in the served CSS`).toBeTruthy();
-  const found = new RegExp(`(?:^|;)\\s*${property}\\s*:\\s*(#[0-9a-fA-F]{3,8})`).exec(
-    (rule as RegExpExecArray)[1],
-  );
-  expect(found, `\`${selector}\` declares no hex \`${property}\``).toBeTruthy();
-  return (found as RegExpExecArray)[1];
+  const body = (rule as RegExpExecArray)[1];
+  // `[^;]*` rather than `\s*`, because the colour is not always the whole
+  // value: `border: 1px solid var(--field-edge)` carries it third.
+  const literal = new RegExp(`(?:^|;)\\s*${property}\\s*:[^;]*?(#[0-9a-fA-F]{3,8})`).exec(body);
+  if (literal) return literal[1];
+  const indirect = new RegExp(`(?:^|;)\\s*${property}\\s*:[^;]*?var\\(\\s*--([\\w-]+)`).exec(body);
+  expect(indirect, `\`${selector}\` declares no hex or var() \`${property}\``).toBeTruthy();
+  return token((indirect as RegExpExecArray)[1]);
 }
 
 beforeAll(async () => {
@@ -104,5 +118,58 @@ describe("the palette, since axe can't", () => {
     expect(
       contrast(declared("a", "color"), declared("body", "color")),
     ).toBeGreaterThanOrEqual(3);
+  });
+
+  // --- the pairs this app's own palette claims -----------------------------
+  //
+  // Derived for this palette rather than carried over: A2's accent map went
+  // with A2's theme. Each pair below is a place a reader has to read
+  // something, checked against the ground it is actually painted on.
+
+  it("carries secondary text at 4.5:1 or better", () => {
+    // --ink-muted is not decoration: the date headings, a booking's purpose
+    // and every room's capacity are written in it. It is body text that
+    // happens to be quieter, so it answers to the body-text floor.
+    expect(contrast(token("ink-muted"), ground)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("carries the refusal at 4.5:1 on the panel it sits on", () => {
+    // The single most important sentence in the app: the one that says the
+    // room is gone and who has it. It is painted on its own tint, not on the
+    // page, so checking it against the page would check a pairing that never
+    // renders.
+    expect(contrast(token("clash-ink"), token("clash-ground"))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("makes the refusal panel visible as a panel", () => {
+    // The tint alone is a couple of percent off white. What makes the panel
+    // read as one is its 4px rule, and a border carrying meaning is a
+    // graphic: WCAG 1.4.11, so 3:1 against the page, not 4.5.
+    expect(contrast(token("clash-ink"), ground)).toBeGreaterThanOrEqual(3);
+  });
+
+  it("carries both status badges at 4.5:1 on their own grounds", () => {
+    expect(contrast(token("held-ink"), token("held-ground"))).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(token("asked-ink"), token("asked-ground"))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("does NOT ask the two status badges to differ in contrast", () => {
+    // Deliberate, and the reason is written down rather than left as a gap in
+    // the file. Confirmed and requested are a dark green and a dark brown:
+    // they differ in hue and are within ~1.2:1 of each other in luminance, so
+    // a 3:1 gap assertion here would fail. It would also be the wrong claim.
+    // The badges are not telling them apart by colour --- each one spells its
+    // status out in words, which is what WCAG asks for and what a reader who
+    // cannot separate the hues actually uses. Colour is the fast path, the
+    // word is the guarantee.
+    expect(contrast(token("held-ink"), token("asked-ink"))).toBeLessThan(3);
+  });
+
+  it("gives form controls an edge that clears 3:1", () => {
+    // The border IS the boundary of the control --- take it below 3:1 and a
+    // text input stops looking like somewhere you can type. A graphic under
+    // WCAG 1.4.11, so 3:1, and the value is read back through the rule that
+    // uses it rather than off the token.
+    expect(contrast(declared("input,select", "border"), ground)).toBeGreaterThanOrEqual(3);
   });
 });
