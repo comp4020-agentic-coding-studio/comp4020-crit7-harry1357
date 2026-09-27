@@ -1,54 +1,36 @@
 # Process overview
 
-<!-- TEMPLATE: this file is a shape to fill in, not a form. Replace everything
-     in it with your own overview, and delete this comment — `pnpm
-     check:evidence` will remind you if it's still here. -->
-
-Written by you, for a reader: how you got from the brief to the harness and
-agentic workflow behind this submission. Markers read this file and follow its
-citations; they don't trawl the repo for evidence you didn't point at.
-
-This file is the shape; the course site's
-[assessment page](https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/topics/assessment/#what-you-submit)
-is the requirement, and its
-[word counts](https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/topics/assessment/#word-counts)
-cover every deliverable.
-
 ## What I built
 
-A sentence or two. `README.md` is where the account of what the app is and what
-good means here lives; this file is how you got there.
+A booking board for the ANU rooms a society actually books: six seeded
+venues, a form, a list, and one rule — no double booking, enforced on
+the server and named in the refusal. Astro with a backend, Drizzle,
+SQLite on a Fly volume.
 
-## How I got here
+## The moments that mattered
 
-The account of the process: how the work actually went, and how you knew the
-result was right. Tell it in whatever order makes it clear. A weekly prototype
-needs a paragraph or two; an assignment needs more.
+### The database had to be older than the image
 
-Cite the record as you go, as links whose text is the commit hash or range and
-whose target is this repo's commit or compare URL, so a reader clicks straight
-to the evidence:
+The spec asks that a booking survive a reload. The real test is a
+redeploy, because a SQLite file baked into the image is rebuilt with it.
+So before any interface existed I had the agent find where the file
+lived: /data/app.db on the mounted volume, nothing inside the image, and
+the clincher — the database dated six days older than the image reading
+it. Then a booking was created, the app redeployed, and the booking was
+still there. The rule went into CLAUDE.md: the schema is ground truth,
+every change is a migration, and the file lives on the volume
+([`18c9850`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit7-harry1357/commit/18c9850); [`5e15cd5`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit7-harry1357/commit/5e15cd5)).
 
-- one commit: [`a1b2c3d`](https://github.com/YOUR-ORG/YOUR-REPO/commit/a1b2c3d)
-- a range:
-  [`a1b2c3d...e4f5a6b`](https://github.com/YOUR-ORG/YOUR-REPO/compare/a1b2c3d...e4f5a6b)
+### The probe was lying, and my own note sent it wrong
 
-To pair a prompt with the commit it produced, quote the prompt (curated, not a
-full transcript) next to the citation:
+The viewport probe set a 390px override, but innerWidth still reported
+502, so every "390×844" result was measured against 502 pixels. A note
+in CLAUDE.md calling that override "a true 390px viewport" is what
+caused it. Corrected, the probe found a real bug straight away: a select
+whose minimum width was the longest room name, 486px in a 358px track.
+The fix that mattered was the note, not the CSS
+([`fb0df3f`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit7-harry1357/commit/fb0df3f)).
 
-> the prompt, verbatim
-
-Screenshots are welcome where one carries the point better than a sentence does.
-Commit the file to this repo and link it with a **relative** path, which is what
-makes it render on GitHub: `![alt text](docs/before.png)`. Images don't count
-towards the word count and don't replace the citation.
-
-## Before you ship
-
-`pnpm check:evidence` verifies that this comment is gone, that your citations
-resolve to real commits, that a crit week's reflection entry is in
-`reflections/`, and that your `CLAUDE.md` is there. It checks that your account
-is traceable, not that it is good: that is the marker's call.
-
-Images aren't checked: unlike a citation whose SHA doesn't resolve, a broken
-image is visible the moment this file is rendered on GitHub.
+One deviation I accepted: the schema rule names src/lib/schema.ts rather
+than the path I'd specified, because that's where drizzle.config.ts
+points, and a false path in a rule is worse than none.
