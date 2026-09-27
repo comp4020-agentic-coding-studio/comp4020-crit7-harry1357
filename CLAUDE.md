@@ -165,6 +165,28 @@ restarts and redeploys. The tests boot against a throwaway database instead.
 - **`better-sqlite3` leaves `PRAGMA foreign_keys` OFF.** Every `references()`
   in the schema is a claim SQLite silently does not check until you turn it
   on, so `src/lib/db.ts` does.
+- **Where the database actually lives, checked in the deployed container
+  rather than inferred from `fly.toml`.** `flyctl ssh console` into the
+  running machine says:
+  - `DATABASE_PATH=/data/app.db`, and `mount` reports
+    `/dev/vdc on /data type ext4` — a separate block device with a
+    `lost+found`, which is the Fly volume. `/` is the image overlay
+    (`none 7.8G`), a different filesystem.
+  - `find / -xdev -name "app.db*"` returns **nothing**: `-xdev` stays off the
+    volume, so this is the image being searched, and no database is baked
+    into it. The image carries `dist/`, `drizzle/` and `node_modules/` only.
+  - The proof is in the timestamps. `/data/app.db` is dated **21 Sep 05:29**
+    and `/app` is dated **27 Sep 09:59** — the database file is older than
+    the image reading it, so it was not shipped with this deploy and was not
+    replaced by it.
+  - Migration `0001` (rooms and bookings) applied to that 21 Sep volume on
+    boot: `__drizzle_migrations` shows 2 applied and `rooms` holds 6 seeded
+    venues, on a volume created before either table existed.
+
+  This matters because a database inside the image is wiped by every deploy
+  while passing every local test and the spec's "persists across a reload"
+  — a reload re-reads the same container. Surviving a *redeploy* is the real
+  claim, and only the volume gives it.
 - **"The core flow persists across a reload" is a spec line, so assert it over
   HTTP** — create something, fetch the page again, look for it in the response.
   Reading the row back out of SQLite proves the write, not the flow.
