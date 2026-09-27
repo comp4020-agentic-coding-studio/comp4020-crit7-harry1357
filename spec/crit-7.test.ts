@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, inject, it } from "vitest";
+import { plain } from "./plain";
 import { ROUTES } from "./routes";
 
 // Crit 7's published spec, as tests.
@@ -19,28 +20,20 @@ const get = async (route: string): Promise<{ status: number; html: string }> => 
   return { status: res.status, html: await res.text() };
 };
 
-/** Text as a reader meets it: no markup, no entities, one space between words. */
-const plain = (html: string): string =>
-  html
-    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
 // ---------------------------------------------------------------------------
 // "the core flow persists across a reload — create something, and it's still
 //  there"
 //
 // The spec's central line, and the only one here that can be held completely.
-// Fill CORE_FLOW in when the system is chosen: the test then drives it over
-// HTTP exactly as a marker would. Reading the row back out of SQLite would
-// prove the write and not the flow, so this goes through the app.
+// The system is chosen now, so CORE_FLOW is filled in: booking an ANU room.
+// The probe drives it over HTTP exactly as a marker would. Reading the row
+// back out of SQLite would prove the write and not the flow, so this goes
+// through the app.
+//
+// The slot below is this file's alone. The spec suite runs its files in
+// parallel against one server and one database, so a room and date another
+// file also books would clash — and that failure reads exactly like the
+// booking rule misfiring.
 // ---------------------------------------------------------------------------
 
 interface CoreFlow {
@@ -53,9 +46,21 @@ interface CoreFlow {
 }
 
 const CORE_FLOW: CoreFlow = {
-  create: null,
+  create: {
+    path: "/",
+    fields: {
+      // Marie Reay 5.02, the first seeded room: the spec database is always
+      // fresh, so the six venues are always ids 1 to 6.
+      roomId: "1",
+      date: "2027-03-15",
+      startTime: "09:00",
+      endTime: "10:00",
+      society: "ANU Computer Science Students Association",
+      status: "requested",
+    },
+  },
   showsUpOn: "/",
-  echoes: "",
+  echoes: "purpose",
 };
 
 describe("the core flow persists across a reload", () => {
