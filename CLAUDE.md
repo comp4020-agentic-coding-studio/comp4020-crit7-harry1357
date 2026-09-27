@@ -245,10 +245,30 @@ than screenshotting for anything you need a number from.
   read `webSocketDebuggerUrl` from `http://localhost:9222/json/version`, then
   `Target.createTarget` → `Target.attachToTarget {flatten: true}` and send
   session-scoped commands.
-- **`Emulation.setDeviceMetricsOverride` gives a true 390px viewport** and
-  sidesteps the headless ~500px minimum window entirely — no iframe needed, and
-  no cropped screenshot pretending to be overflow. Add
-  `Emulation.setTouchEmulationEnabled` for touch.
+- **`Emulation.setDeviceMetricsOverride` gives a true 390px *layout*, and a
+  lying `innerWidth`.** This cost me most of an afternoon in crit 7, and the
+  old wording here — "a true 390px viewport" — is what sent me the wrong way,
+  so: with `{width: 390, mobile: true}`, `documentElement.clientWidth` is 390
+  and the page really does lay out at 390, but **`innerWidth` still reports
+  502**, the headless minimum window. The override is not applied to it, at
+  any `deviceScaleFactor` (measured at 0, 1, 2 and 3). Anything comparing
+  against `innerWidth` is therefore measuring a 502px viewport while printing
+  "390×844" — a 112px blind spot on every phone run.
+- **`documentElement.scrollWidth` is not an overflow signal under mobile
+  emulation.** It is floored by the window, so it reads 502 on a perfectly
+  healthy 390px page; and when content is wide enough the mobile viewport
+  *expands to meet it*, so a genuinely overflowing page gave `scrollWidth`
+  977 and `innerWidth` 977 — equal, and `scrollWidth > innerWidth` was false
+  while the page was unusable. Measure **per element** against
+  `documentElement.clientWidth` instead, skipping anything inside an
+  `overflow-x: auto` ancestor, which is the case that is allowed to be wide.
+- **A self-test can pass in conditions the real measurements never meet.** The
+  viewport probe's planted 3000px canary was detected the whole time the probe
+  was blind to the actual overflow, because a 3000px `<div>` is far enough out
+  to beat the expanding viewport and a 486px field is not. "The probe is
+  looking" meant it could see the easy case. Assert the sensor's *setup* too —
+  the probe now fails loudly if `clientWidth` isn't the width it asked for.
+- Add `Emulation.setTouchEmulationEnabled` for touch.
 - **`Input.dispatchMouseEvent` / `dispatchKeyEvent` are trusted events.**
   `navigator.userActivation.hasBeenActive` flips to true after one; a
   `dispatchEvent` from page script does not. This matters more this week — a
@@ -342,6 +362,13 @@ can't read are styles nothing checks.
 - Don't use the `padding` / `margin` shorthand on a class that shares an element
   with a layout class — `padding: 2.5rem 0 4rem` on `.page` silently reset
   `.wrap`'s horizontal padding to `0`. Use `padding-block` / `padding-inline`.
+- **A grid or flex item's automatic minimum is its min-content size, and a
+  `<select>`'s min-content is its longest option.** `.field` holding a room
+  `<select>` was 486px wide inside a 358px track at 390px, and the page
+  overflowed. `min-width: 0` on the *select* changes nothing: the constraint
+  belongs to the grid item, so it goes on `.field`. Nothing in the roster saw
+  this — the viewport probe was comparing against a 502px `innerWidth`, and
+  the overflow stopped at exactly 502.
 - **Same trap, different property: don't put `max-inline-size` on an element
   that already carries a centring wrapper.** It centres the narrow column and
   silently breaks the left edge every other section shares. Nest a child

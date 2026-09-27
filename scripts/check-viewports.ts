@@ -93,8 +93,35 @@ async function attach(wsUrl: string): Promise<Cdp> {
   return { send: raw, close: () => socket.close() };
 }
 
+// Measured against the width we ASKED for, never against `innerWidth`.
+//
+// `Emulation.setDeviceMetricsOverride({width: 390, mobile: true})` lays the
+// page out at 390 but leaves `innerWidth` reporting 502 --- headless Chrome's
+// ~500px minimum window leaks through the override. Comparing against
+// `innerWidth` therefore measured a 502px viewport while printing "390×844",
+// a 112px blind spot on every phone run.
+//
+// `documentElement.scrollWidth` is no good as the verdict either: it is
+// floored by the window, so it reads 502 on a perfectly healthy page, and
+// when content overflows far enough the mobile viewport expands to meet it
+// --- a 60rem field gave scrollWidth 977 and innerWidth 977, equal, so the
+// old test was false and the overflow went unreported. The planted 3000px
+// canary was detected the whole time, so the self-test passed and the probe
+// still could not see the thing it exists to see.
+//
+// So the claim is per-element: no visible element's box may cross the
+// viewport we asked for. Content inside its own scrollable container is still
+// allowed to be wide --- that is the fix, not the failure --- so an element
+// with a scrolling ancestor is skipped.
 const MEASURE = `(() => {
-  const vw = innerWidth;
+  const vw = document.documentElement.clientWidth;
+  const scrollable = (el) => {
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      const o = getComputedStyle(p).overflowX;
+      if (o === 'auto' || o === 'scroll' || o === 'hidden') return true;
+    }
+    return false;
+  };
   const offenders = [];
   for (const el of document.querySelectorAll('body *')) {
     const style = getComputedStyle(el);
@@ -103,14 +130,58 @@ const MEASURE = `(() => {
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) continue;
     if (rect.right > vw + 1 || rect.left < -1) {
+      if (scrollable(el)) continue;
       offenders.push(el.tagName.toLowerCase()
         + (el.id ? '#' + el.id : '')
         + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\\s+/)[0] : '')
         + ' [' + Math.round(rect.left) + '…' + Math.round(rect.right) + ']');
     }
   }
-  return { scrollWidth: document.documentElement.scrollWidth, viewport: vw, offenders: offenders.slice(0, 5) };
+  return { layoutWidth: vw, viewport: vw, innerWidth,
+    count: offenders.length, offenders: offenders.slice(0, 5) };
 })()`;
+
+
+/**
+ * Put bookings on the board before measuring it.
+ *
+ * The probe boots a throwaway database, so without this it walks an app whose
+ * only content is an empty form --- and an empty page does not scroll
+ * sideways no matter what the stylesheet says. The layout that can actually
+ * overflow is the one that renders real rows: a long society name, a long
+ * purpose, and a three-column grid above 34rem. Measuring the easy version
+ * and reporting a green run is the exact failure CLAUDE.md warns about, where
+ * a sensor that saw nothing and a sensor that saw everything look identical
+ * from the output.
+ *
+ * The content is deliberately hostile: the longest venue names in the seed,
+ * and society and purpose strings longer than anything a form would usually
+ * carry.
+ */
+async function fillTheBoard(appUrl: string): Promise<void> {
+  const bookings = [
+    { roomId: "3", date: "2026-10-01", startTime: "14:00", endTime: "16:00", society: "ANU Computer Science Students Association", purpose: "Weekly hack night and end-of-semester project showcase", status: "confirmed" },
+    { roomId: "3", date: "2026-10-01", startTime: "16:00", endTime: "17:30", society: "ANU Interdisciplinary Postgraduate Research Society", purpose: "Committee handover", status: "requested" },
+    { roomId: "4", date: "2026-10-02", startTime: "09:00", endTime: "11:00", society: "ANU Food Co-op", purpose: "First-year welcome BBQ briefing", status: "requested" },
+  ];
+
+  for (const booking of bookings) {
+    const res = await fetch(new URL("/", appUrl), {
+      method: "POST",
+      // Astro 403s a form POST with no same-origin Origin header, before the
+      // request reaches the app. A browser always sends one; fetch does not.
+      headers: { origin: appUrl, "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(booking),
+      redirect: "manual",
+    });
+    if (res.status !== 303) {
+      throw new Error(
+        `could not seed the board for the probe: POST / answered ${res.status}. ` +
+          "The probe would otherwise measure an empty page and pass for the wrong reason.",
+      );
+    }
+  }
+}
 
 async function main(): Promise<void> {
   const dbDir = mkdtempSync(join(tmpdir(), "viewports-db-"));
@@ -163,6 +234,8 @@ async function main(): Promise<void> {
       await new Promise((r) => setTimeout(r, 200));
     }
 
+    await fillTheBoard(appUrl);
+
     let wsUrl = "";
     for (let attempt = 0; ; attempt++) {
       try {
@@ -179,12 +252,32 @@ async function main(): Promise<void> {
     }
 
     const cdp = await attach(wsUrl);
-    const measure = async (): Promise<{ scrollWidth: number; viewport: number; offenders: string[] }> => {
+    interface Measurement {
+      layoutWidth: number;
+      viewport: number;
+      innerWidth: number;
+      count: number;
+      offenders: string[];
+    }
+    // A classic desktop scrollbar takes its width out of clientWidth (1920
+    // lays out at 1905), so the check is "near enough", not "equal".
+    const SCROLLBAR = 20;
+    const measure = async (asked: number): Promise<Measurement> => {
       const result = (await cdp.send("Runtime.evaluate", {
         expression: MEASURE,
         returnByValue: true,
-      })) as { result: { value: { scrollWidth: number; viewport: number; offenders: string[] } } };
-      return result.result.value;
+      })) as { result: { value: Measurement } };
+      const value = result.result.value;
+      // The emulation is part of what is being trusted. If the override did
+      // not take, every number below describes a viewport nobody asked for,
+      // and the run would print confident results for the wrong width.
+      if (value.layoutWidth > asked || value.layoutWidth < asked - SCROLLBAR) {
+        throw new Error(
+          `the ${asked}px override did not take: the document is laid out at ${value.layoutWidth}px. ` +
+            "Every measurement in this run would be for a viewport nobody asked for.",
+        );
+      }
+      return value;
     };
     const goto = async (url: string): Promise<void> => {
       await cdp.send("Page.navigate", { url });
@@ -205,12 +298,16 @@ async function main(): Promise<void> {
     // 3000px wide and check it is detected. A sensor that has stopped looking
     // reports exactly what a clean page reports.
     await goto(`${appUrl}/`);
+    const before = await measure(390);
     await cdp.send("Runtime.evaluate", {
       expression:
         "document.body.insertAdjacentHTML('beforeend', '<div id=\"probe-canary\" style=\"width:3000px;height:8px\"></div>')",
     });
-    const canary = await measure();
-    if (canary.offenders.length === 0 || canary.scrollWidth <= canary.viewport) {
+    const after = await measure(390);
+    // Compare counts rather than looking for the canary in the reported list:
+    // that list is capped at five and the canary is last in document order, so
+    // on a page with any offenders of its own it would never appear in it.
+    if (after.count <= before.count) {
       console.error("✗ self-test: a planted 3000px element was NOT detected — the probe is blind");
       cleanup();
       process.exit(1);
@@ -226,11 +323,11 @@ async function main(): Promise<void> {
       });
       for (const route of ROUTES) {
         await goto(new URL(route, appUrl).href);
-        const { scrollWidth, viewport: vw, offenders } = await measure();
-        if (scrollWidth > vw + 1) {
+        const { offenders } = await measure(viewport.width);
+        if (offenders.length > 0) {
           failures += 1;
           console.error(
-            `✗ ${route} at ${viewport.width}×${viewport.height}: scrollWidth ${scrollWidth} > ${vw}`,
+            `✗ ${route} at ${viewport.width}×${viewport.height}: ${offenders.length} element(s) cross the viewport`,
           );
           for (const offender of offenders) console.error(`    ${offender}`);
         } else {
